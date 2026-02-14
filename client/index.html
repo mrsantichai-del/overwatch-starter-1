@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overwatch | Tactical Interface</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #030712;
+            color: #e5e7eb;
+        }
+
+        .header-font {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        #map {
+            height: calc(100vh - 80px);
+            width: 100%;
+            background: #0b0f1a;
+        }
+
+        /* Leaflet Cyberpunk Adjustments */
+        .leaflet-container {
+            background: #0b0f1a !important;
+        }
+
+        .leaflet-tile {
+            filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #111827;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 10px;
+        }
+
+        /* Pulse Animation for HIGH Priority */
+        @keyframes pulse-red {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            50% {
+                transform: scale(1.5);
+                opacity: 0.5;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .pulse-high {
+            display: block;
+            width: 12px;
+            height: 12px;
+            background: #ef4444;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #ef4444;
+            animation: pulse-red 1s infinite;
+        }
+
+        /* Emergency Override Effects */
+        .override-active #map {
+            filter: contrast(120%) brightness(110%) saturate(120%);
+        }
+
+        .override-active .leaflet-tile {
+            filter: invert(100%) hue-rotate(180deg) brightness(80%) contrast(120%) saturate(150%);
+        }
+
+        #emergency-banner {
+            display: none;
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2000;
+            background: rgba(22, 163, 74, 0.9);
+            color: white;
+            padding: 8px 24px;
+            border-radius: 4px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
+            border: 2px solid #4ade80;
+        }
+
+        #override-btn {
+            transition: all 0.3s ease;
+        }
+
+        #override-btn.active {
+            background-color: #ef4444;
+            border-color: #f87171;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+        }
+    </style>
+</head>
+
+<body class="overflow-hidden">
+    <!-- Top Bar -->
+    <nav class="h-20 border-b border-gray-800 flex items-center justify-between px-6 bg-gray-950/50 backdrop-blur-md">
+        <div class="flex items-center gap-4">
+            <div
+                class="w-10 h-10 bg-red-600 rounded flex items-center justify-center shadow-[0_0_15px_rgba(220,38,38,0.5)]">
+                <span class="header-font font-bold text-xl">Ω</span>
+            </div>
+            <div>
+                <h1 class="header-font text-xl font-bold tracking-widest text-red-500">OVERWATCH SYSTEM</h1>
+                <p class="text-[10px] text-gray-500 uppercase tracking-tighter">Tactical Response Interface v1.0.4</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-6">
+            <div id="connection-status"
+                class="flex items-center gap-2 px-3 py-1 bg-red-950/30 border border-red-500/50 rounded-full">
+                <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                <span class="text-[10px] header-font text-red-400">OFFLINE</span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-80 bg-gray-950/80 border-r border-gray-800 flex flex-col">
+            <div class="p-4 border-b border-gray-800">
+                <h2 class="header-font text-sm text-gray-400 flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                    LIVE FEED
+                </h2>
+            </div>
+            <div id="incident-list" class="flex-1 overflow-y-auto p-4 space-y-3">
+                <!-- Incidents will appear here -->
+                <div class="text-xs text-gray-600 text-center italic mt-10">Waiting for data...</div>
+            </div>
+        </aside>
+
+        <!-- Map Container -->
+        <section class="flex-1 relative">
+            <div id="map"></div>
+            <!-- Map Overlay UI -->
+            <div id="emergency-banner" class="header-font">TRAFFIC CONTROL ACTIVE</div>
+
+            <div class="absolute bottom-6 right-6 z-[1000] flex flex-col gap-4">
+                <button id="override-btn"
+                    class="bg-green-600 hover:bg-green-500 text-white font-bold py-4 px-6 rounded-lg border-2 border-green-400 shadow-[0_0_15px_rgba(34,197,94,0.4)] header-font tracking-widest text-sm">
+                    EMERGENCY OVERRIDE
+                </button>
+
+                <div class="bg-gray-900/90 border border-gray-800 p-3 rounded shadow-2xl backdrop-blur-sm">
+                    <div class="text-[10px] text-gray-500 mb-1">COORDINATES</div>
+                    <div class="header-font text-xs text-blue-400">LAT: 13.7563 | LNG: 100.5018</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Leaflet & Socket.io -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <script>
+        // --- 1. Initialize Map ---
+        const map = L.map('map', {
+            zoomControl: false,
+            attributionControl: false
+        }).setView([13.7563, 100.5018], 13);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        // Custom Zoom Control
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        // --- 2. WebSocket Setup ---
+        const socket = io('http://localhost:3000');
+        const statusEl = document.getElementById('connection-status');
+
+        socket.on('connect', () => {
+            statusEl.innerHTML = `
+                <div class="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_5px_#22c55e]"></div>
+                <span class="text-[10px] header-font text-green-400">SYSTEM ONLINE</span>
+            `;
+            statusEl.className = "flex items-center gap-2 px-3 py-1 bg-green-950/30 border border-green-500/50 rounded-full";
+        });
+
+        socket.on('disconnect', () => {
+            statusEl.innerHTML = `
+                <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                <span class="text-[10px] header-font text-red-400">DISCONNECTED</span>
+            `;
+            statusEl.className = "flex items-center gap-2 px-3 py-1 bg-red-950/30 border border-red-500/50 rounded-full";
+        });
+
+        // --- 3. Event Listener ---
+        let latestIncident = null;
+        let routeLine = null;
+        let isOverrideActive = false;
+
+        socket.on('new_incident', (incident) => {
+            console.log('New Incident received:', incident);
+            latestIncident = incident;
+            addIncidentToUI(incident);
+        });
+
+        // --- 4. Emergency Override Logic ---
+        const overrideBtn = document.getElementById('override-btn');
+        const banner = document.getElementById('emergency-banner');
+
+        overrideBtn.addEventListener('click', () => {
+            isOverrideActive = !isOverrideActive;
+
+            if (isOverrideActive) {
+                document.body.classList.add('override-active');
+                overrideBtn.innerHTML = "SYSTEM OVERRIDE ACTIVE";
+                overrideBtn.classList.add('active');
+                banner.style.display = 'block';
+
+                if (latestIncident) {
+                    const siamPos = [13.7456, 100.5342];
+                    const incidentPos = [
+                        latestIncident.lat || 13.7563,
+                        latestIncident.lng || 100.5018
+                    ];
+
+                    if (routeLine) map.removeLayer(routeLine);
+
+                    routeLine = L.polyline([siamPos, incidentPos], {
+                        color: '#4ade80',
+                        weight: 5,
+                        opacity: 0.8,
+                        dashArray: '10, 10',
+                        lineJoin: 'round'
+                    }).addTo(map);
+
+                    map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+                }
+            } else {
+                document.body.classList.remove('override-active');
+                overrideBtn.innerHTML = "EMERGENCY OVERRIDE";
+                overrideBtn.classList.remove('active');
+                banner.style.display = 'none';
+                if (routeLine) {
+                    map.removeLayer(routeLine);
+                    routeLine = null;
+                }
+            }
+        });
+
+        // --- 5. Core Logic Functions ---
+        function addIncidentToUI(incident) {
+            // Use coordinates from server or fallback to random Bangkok area
+            const lat = incident.lat || (13.7 + (Math.random() * 0.1));
+            const lng = incident.lng || (100.4 + (Math.random() * 0.2));
+
+            // Add Marker
+            const markerIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: incident.priority === 'HIGH'
+                    ? `<div class="pulse-high"></div>`
+                    : `<div class="w-3 h-3 bg-blue-500 rounded-full shadow-[0_0_5px_#3b82f6]"></div>`,
+                iconSize: [12, 12],
+                iconAnchor: [6, 6]
+            });
+
+            const marker = L.marker([lat, lng], { icon: markerIcon }).addTo(map);
+            marker.bindPopup(`
+                <div class="text-gray-900">
+                    <b class="header-font text-xs">${incident.type}</b><br>
+                    <span class="text-[10px]">${incident.text}</span>
+                </div>
+            `);
+
+            // Add to Sidebar
+            const list = document.getElementById('incident-list');
+            if (list.innerText === 'Waiting for data...') list.innerHTML = '';
+
+            const incidentCard = document.createElement('div');
+            incidentCard.className = `p-3 rounded border ${incident.priority === 'HIGH' ? 'border-red-900 bg-red-950/20 shadow-[inset_0_0_10px_rgba(220,38,38,0.1)]' : 'border-gray-800 bg-gray-900/40'} border-l-4 ${incident.priority === 'HIGH' ? 'border-l-red-500' : 'border-l-blue-500'} transition-all hover:scale-[1.02] cursor-pointer`;
+
+            incidentCard.innerHTML = `
+                <div class="flex justify-between items-start mb-1">
+                    <span class="header-font text-[10px] font-bold ${incident.priority === 'HIGH' ? 'text-red-400' : 'text-blue-400'}">${incident.type}</span>
+                    <span class="text-[8px] text-gray-500">${new Date(incident.createdAt).toLocaleTimeString()}</span>
+                </div>
+                <p class="text-[11px] text-gray-300">${incident.text}</p>
+            `;
+
+            incidentCard.onclick = () => {
+                map.setView([lat, lng], 15);
+                marker.openPopup();
+            };
+
+            list.prepend(incidentCard);
+        }
+    </script>
+</body>
+
+</html>
